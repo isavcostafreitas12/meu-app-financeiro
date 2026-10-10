@@ -40,20 +40,20 @@ if 'financas' not in st.session_state:
 with st.sidebar:
     st.header("📝 Nova Transação")
     
+    # CORREÇÃO: O Tipo de movimentação agora fica FORA do formulário.
+    # Assim, quando você clica em Saída, ele atualiza a lista de categorias na hora!
+    tipo_input = st.radio("Tipo de Movimentação", ["Entrada 🟢", "Saída 🔴"])
+    
     with st.form(key='form_transacao', clear_on_submit=True):
         data_input = st.date_input("Data", value=date.today())
-        tipo_input = st.radio("Tipo de Movimentação", ["Entrada 🟢", "Saída 🔴"])
         
         conta_input = st.selectbox("Conta / Instituição", ["Nubank", "Banco Inter", "C6 Bank", "Dinheiro Físico", "Outra"])
         
+        # Categorias personalizadas conforme o seu pedido
         if "Entrada" in tipo_input:
-            cat_opcoes = ["Salário", "Bolsa/Estágio", "Mesada", "Rendimento de Investimento", "Transferência Recebida", "Venda", "Outros"]
+            cat_opcoes = ["Mesada", "Transação Recebida", "Salário", "Bolsa/Estágio", "Rendimento de Investimento", "Outros"]
         else:
-            cat_opcoes = [
-                "Alimentação", "Vestuário", "Higiene e Cuidados", "Saúde", 
-                "Transporte", "Cursos/Educação", "Investimento", "Moradia", 
-                "Lazer e Assinaturas", "Finanças/Taxas", "Outros"
-            ]
+            cat_opcoes = ["Alimentação", "Transporte", "Vestuário", "Higiene e Cuidados", "Saúde", "Cursos/Educação", "Investimento", "Moradia", "Lazer", "Outros"]
             
         categoria_input = st.selectbox("Categoria", cat_opcoes)
         desc_input = st.text_input("Descrição (Ex: Compra de livros, Lanche)")
