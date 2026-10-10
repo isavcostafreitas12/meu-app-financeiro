@@ -25,14 +25,24 @@ ARQUIVO_DADOS = 'dados_financeiros.csv'
 if 'financas' not in st.session_state:
     if os.path.exists(ARQUIVO_DADOS):
         df_salvo = pd.read_csv(ARQUIVO_DADOS)
-        df_salvo['Data'] = pd.to_datetime(df_salvo['Data'])
+        df_salvo['Data'] = pd.to_datetime(df_salvo['Data'], errors='coerce')
         
+        # Travas de segurança: Cria as novas colunas nos registros antigos para evitar erros
         if 'Conta' not in df_salvo.columns:
             df_salvo.insert(2, 'Conta', 'Não Especificada')
+        if 'Método' not in df_salvo.columns:
+            df_salvo['Método'] = '-'
+        if 'Parcelas' not in df_salvo.columns:
+            df_salvo['Parcelas'] = 1
+        if 'Fim das Parcelas' not in df_salvo.columns:
+            df_salvo['Fim das Parcelas'] = '-'
             
         st.session_state.financas = df_salvo
     else:
-        st.session_state.financas = pd.DataFrame(columns=['Data', 'Tipo', 'Conta', 'Categoria', 'Descrição', 'Valor'])
+        st.session_state.financas = pd.DataFrame(columns=[
+            'Data', 'Tipo', 'Conta', 'Método', 'Parcelas', 'Fim das Parcelas', 
+            'Categoria', 'Descrição', 'Valor'
+        ])
 
 # ==========================================
 # 3. PAINEL LATERAL (Entrada de Dados)
@@ -40,33 +50,50 @@ if 'financas' not in st.session_state:
 with st.sidebar:
     st.header("📝 Nova Transação")
     
-    # CORREÇÃO: O Tipo de movimentação agora fica FORA do formulário.
-    # Assim, quando você clica em Saída, ele atualiza a lista de categorias na hora!
+    # Movimentação e Método fora do formulário para interatividade instantânea
     tipo_input = st.radio("Tipo de Movimentação", ["Entrada 🟢", "Saída 🔴"])
+    metodo_input = st.radio("Método de Pagamento", ["Débito / PIX / Dinheiro", "Crédito 💳"])
     
     with st.form(key='form_transacao', clear_on_submit=True):
         data_input = st.date_input("Data", value=date.today())
         
         conta_input = st.selectbox("Conta / Instituição", ["Nubank", "Banco Inter", "C6 Bank", "Dinheiro Físico", "Outra"])
         
-        # Categorias personalizadas conforme o seu pedido
         if "Entrada" in tipo_input:
             cat_opcoes = ["Mesada", "Transação Recebida", "Salário", "Bolsa/Estágio", "Rendimento de Investimento", "Outros"]
         else:
             cat_opcoes = ["Alimentação", "Transporte", "Vestuário", "Higiene e Cuidados", "Saúde", "Cursos/Educação", "Investimento", "Moradia", "Lazer", "Outros"]
             
         categoria_input = st.selectbox("Categoria", cat_opcoes)
-        desc_input = st.text_input("Descrição (Ex: Compra de livros, Lanche)")
-        valor_input = st.number_input("Valor (R$)", min_value=0.01, format="%.2f", step=10.0)
+        desc_input = st.text_input("Descrição (Ex: Compra de livros)")
+        
+        valor_input = st.number_input("Valor Total (R$)", min_value=0.01, format="%.2f", step=10.0)
+        
+        # Campo para quantidade de parcelas
+        parcelas_input = st.number_input("Quantidade de Parcelas (Deixe 1 se for à vista)", min_value=1, max_value=72, step=1)
         
         submit_button = st.form_submit_button(label="Adicionar Transação")
         
         if submit_button:
             tipo_limpo = "Entrada" if "Entrada" in tipo_input else "Saída"
+            metodo_limpo = "Crédito" if "Crédito" in metodo_input else "Débito/PIX/Dinheiro"
+            
+            # Inteligência do Código: Calculando automaticamente quando a dívida acaba
+            if metodo_limpo == "Crédito" and parcelas_input > 1:
+                # Adiciona (Parcelas - 1) meses à data da compra
+                data_fim = pd.to_datetime(data_input) + pd.DateOffset(months=parcelas_input - 1)
+                fim_str = data_fim.strftime('%m/%Y') # Mostra apenas o Mês/Ano (Ex: 05/2027)
+            else:
+                parcelas_input = 1
+                fim_str = "-"
+
             nova_linha = pd.DataFrame({
                 'Data': [pd.to_datetime(data_input)],
                 'Tipo': [tipo_limpo],
                 'Conta': [conta_input],
+                'Método': [metodo_limpo],
+                'Parcelas': [parcelas_input],
+                'Fim das Parcelas': [fim_str],
                 'Categoria': [categoria_input],
                 'Descrição': [desc_input],
                 'Valor': [valor_input]
@@ -75,10 +102,13 @@ with st.sidebar:
             st.session_state.financas = pd.concat([st.session_state.financas, nova_linha], ignore_index=True)
             st.session_state.financas.to_csv(ARQUIVO_DADOS, index=False)
             
-            st.success("Guardado com sucesso no ficheiro!")
+            st.success("Guardado com sucesso no arquivo!")
 
     if st.button("Limpar todos os dados 🗑️"):
-        st.session_state.financas = pd.DataFrame(columns=['Data', 'Tipo', 'Conta', 'Categoria', 'Descrição', 'Valor'])
+        st.session_state.financas = pd.DataFrame(columns=[
+            'Data', 'Tipo', 'Conta', 'Método', 'Parcelas', 'Fim das Parcelas', 
+            'Categoria', 'Descrição', 'Valor'
+        ])
         st.session_state.financas.to_csv(ARQUIVO_DADOS, index=False)
         st.rerun()
 
@@ -118,7 +148,7 @@ else:
             fig_pie.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(fig_pie, use_container_width=True)
         else:
-            st.write("Sem saídas registadas.")
+            st.write("Sem saídas registradas.")
 
     with col_graf2:
         st.subheader("Movimentações por Conta 🏦")
@@ -135,8 +165,11 @@ else:
 
     st.subheader("📋 Histórico de Transações")
     df_exibicao = df.copy()
+    
+    df_exibicao['Data'] = pd.to_datetime(df_exibicao['Data'], errors='coerce')
     df_exibicao['Data'] = df_exibicao['Data'].dt.strftime('%d/%m/%Y')
     df_exibicao['Valor'] = df_exibicao['Valor'].apply(lambda x: f"R$ {x:,.2f}")
     
-    df_exibicao = df_exibicao[['Data', 'Tipo', 'Conta', 'Categoria', 'Descrição', 'Valor']]
+    # Ordem atualizada incluindo as colunas de parcelamento
+    df_exibicao = df_exibicao[['Data', 'Tipo', 'Conta', 'Método', 'Parcelas', 'Fim das Parcelas', 'Categoria', 'Descrição', 'Valor']]
     st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
